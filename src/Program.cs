@@ -16,31 +16,33 @@ namespace ListDependencies
         public bool Verbose = false;
         public void WriteAllDependencies(string filePath)
         {
+            Console.WriteLine($"Loading main assembly...");
+
             // Try to get the root assembly given the filePath, then list all dependencies.
-            // If the given path is rooted, then change current directory to that path.
+            // Change the current directory to the directory of the given filePath
             Assembly assembly;
             try
             {
-                if (!Path.IsPathRooted(filePath))
+                string? directoryName = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(directoryName))
                 {
-                    // filePath is NOT rooted
-                    filePath = Directory.GetCurrentDirectory() + "\\" + filePath;
+                    Directory.SetCurrentDirectory(directoryName);
+                    filePath = Path.GetFileName(filePath);
                 }
-                else
-                {
-                    // filePath is rooted
-                    string? directoryName = Path.GetDirectoryName(filePath);
-                    if (!string.IsNullOrEmpty(directoryName)) Directory.SetCurrentDirectory(directoryName);
-                }
-                assembly = Assembly.LoadFile(filePath);
+
+                Console.WriteLine($"Current directory is now '{Directory.GetCurrentDirectory()}.");
+                Console.WriteLine($"File {filePath} exists: {File.Exists(filePath)}");
+                
+                assembly = Assembly.LoadFile(Directory.GetCurrentDirectory() + Path.DirectorySeparatorChar + filePath);
+                Console.WriteLine($"Found assembly at {assembly.Location}");
             }
             catch (Exception e)
             {
                 Console.Error.WriteLine("Error loading " + filePath + " : " + e.Message);
                 return;
             }
-
-            if (!Console.IsOutputRedirected) Console.WriteLine("Loading...");
+            
+            Console.WriteLine("Loading dependencies... Please be patient...");
 
             Dictionary<Assembly, Assembly> dependencies = new Dictionary<Assembly, Assembly>();
             Dictionary<AssemblyName, Assembly> errors = new Dictionary<AssemblyName, Assembly>();
@@ -49,7 +51,8 @@ namespace ListDependencies
             List<Assembly> list = new List<Assembly>(dependencies.Keys);
             list.Sort( (a,b) => { return string.Compare(a.GetName().Name, b.GetName().Name); });
 
-            Console.WriteLine($"{filePath} : \n{assembly.GetName()}\nDepends on: ");
+            string assemblyFile = Verbose ? assembly.Location : Path.GetFileName(assembly.Location);
+            Console.WriteLine($"{assemblyFile} : \n{assembly.GetName()}\nDepends on: ");
             foreach (Assembly dependency in list)
             {
                 Assembly dependencyOrig = dependencies[dependency];
@@ -81,13 +84,16 @@ namespace ListDependencies
         /// <returns>The loaded assembly.</returns>
         private Assembly? LoadAssembly(AssemblyName assemblyName)
         {
-            ConsoleSpinner.Instance.Turn();
-
             Assembly? assembly = null;
             try
             {
                 assembly = Assembly.Load(assemblyName);
                 return assembly;
+            }
+            catch (System.BadImageFormatException ex)
+            {
+                // found something, but didnt like it
+                Console.Error.WriteLine(ex.Message);
             }
             catch { }
 
@@ -95,6 +101,11 @@ namespace ListDependencies
             {
                 assembly = Assembly.LoadFile(Directory.GetCurrentDirectory() + "\\" + assemblyName.Name + ".dll");
                 if (assembly != null && assemblyName.FullName == assembly.FullName) return assembly;
+            }
+            catch (System.BadImageFormatException ex)
+            {
+                // found something, but didnt like it
+                Console.Error.WriteLine(ex.Message);
             }
             catch { }
 
@@ -138,34 +149,6 @@ namespace ListDependencies
         }
     }
 
-    /// <summary>
-    /// Simple console spinner
-    /// Only turns if output is not redirected.
-    /// Adapted from https://stackoverflow.com/questions/1923323/console-animations
-    /// </summary>
-    public class ConsoleSpinner
-    {
-        
-        public static readonly ConsoleSpinner Instance = new ConsoleSpinner();
-
-        private int state = 0;
-        private ConsoleSpinner() { }
-  
-        public void Turn()
-        {
-            if (Console.IsOutputRedirected) return;
-            state++;
-            state = state % 4;
-            switch (state)
-            {
-                case 0: Console.Write("/"); break;
-                case 1: Console.Write("-"); break;
-                case 2: Console.Write("\\"); break;
-                case 3: Console.Write("|"); break;
-            }
-            Console.SetCursorPosition(Console.CursorLeft - 1, Console.CursorTop);
-        }
-    }
     class Program
     {
         static void Main(string[] args)
@@ -193,12 +176,6 @@ namespace ListDependencies
 
                 ListDependencies.Instance.WriteAllDependencies(args[1]);
             }
-
-            if (!Console.IsOutputRedirected)
-            {
-                Console.WriteLine("Press any key to continue . . .");
-                Console.ReadKey(true);
-            }
         }
 
         static void WriteUsage()
@@ -211,6 +188,7 @@ namespace ListDependencies
                 filename = Path.GetFileNameWithoutExtension(location) ?? filename;
             }
             Console.WriteLine("Lists all dependencies.");
+            Console.WriteLine("LIMITATION: Because the dependencies are loaded into memory, they must be for the same processor/platform (x86/x64/AnyCpu) as this program.");
             Console.WriteLine("Usage: " + filename + " [-v] <file path>");
             Console.WriteLine("  -v \tVerbose. Show location of dependencies.");
         }
