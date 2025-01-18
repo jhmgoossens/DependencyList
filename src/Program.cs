@@ -34,7 +34,7 @@ namespace ListDependencies
                 Console.WriteLine($"File {filePath} exists: {File.Exists(filePath)}");
                 
                 assembly = Assembly.LoadFile(Directory.GetCurrentDirectory() + Path.DirectorySeparatorChar + filePath);
-                Console.WriteLine($"Found assembly at {assembly.Location}");
+                Console.WriteLine($"Loaded assembly at {assembly.Location}");
             }
             catch (Exception e)
             {
